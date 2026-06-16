@@ -1,0 +1,684 @@
+{
+  "name": "Sub-Workflow 1 - Manuelle-Entscheidung",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "manuelle-entscheidung",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        -608
+      ],
+      "id": "26f6a104-4269-4b89-86a3-6f06a7a9bf23",
+      "name": "Webhook",
+      "webhookId": "986115d6-8839-4537-ad04-5ab0ef2b8903"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.manuelle_entscheidung }}",
+                    "rightValue": "einladen",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "41f8460e-d670-4488-b704-0495543d7786"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "8572a3c3-1bad-4da7-b700-e1dbed829958",
+                    "leftValue": "={{ $json.manuelle_entscheidung }}",
+                    "rightValue": "absagen",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        -512
+      ],
+      "id": "c05b92a3-5c72-4e12-894d-93b2bab2fdfe",
+      "name": "Einladen oder Absagen?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pga7yket86jj0rl.bewerbungen\nSET \n  status_ = 'einladung_versendet',\n  letzte_aktion = CURRENT_TIMESTAMP\nWHERE id = {{ $json.id }}\nRETURNING id, name, email, plz_wohnort",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1344,
+        -608
+      ],
+      "id": "8174131d-b2fa-45ff-aca9-a63ac911b598",
+      "name": "DB - Einladung speichern (manuell)",
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=={{ $('Einladen oder Absagen?').first().json.email_from || $('Einladen oder Absagen?').first().json.email }}",
+        "subject": "=[REF:{{ $('DB - Einladung speichern (manuell)').first().json.id }}] Deine Bewerbung als Objektbesichtiger:in bei Certa",
+        "message": "=Hallo {{ $('Einladen oder Absagen?').first().json.name }},<br><br>\nvielen Dank fuer Deine Bewerbung als Objektbesichtiger:in bei Certa.<br>\nWir freuen uns ueber Dein Interesse und Dein Profil passt sehr gut zu dem, was wir aktuell in der Region <strong>{{ $('Einladen oder Absagen?').first().json.plz_wohnort }}</strong> suchen.<br><br>\nIm naechsten Schritt wuerden wir gerne kurz telefonieren - <strong>etwa 20 bis 30 Minuten.</strong><br>\nWir erklaeren Dir, wie unsere Auftraege ablaufen, welche Verguetung Du erwarten kannst und beantworten Deine Fragen.<br><br>\nDu kannst Dir ganz unkompliziert einen passenden Termin über <a href=\"https://app.usemotion.com/meet/alexander-rausch/c659q8b\" style=\"text-decoration: underline;\">diesen Link</a> aussuchen.\n<br><br>\nBeste Gruesse<br>\n<strong>Certa GmbH</strong>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1568,
+        -608
+      ],
+      "id": "80f999ea-99f1-42ee-96c4-d10352d088a9",
+      "name": "Mail - Einladung senden (manuell)",
+      "webhookId": "3becee24-7eec-422b-ad3f-149b0542bd26",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "da018LzcF4j1tjvr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pga7yket86jj0rl.bewerbungen\nSET \n  status_ = 'absage_versendet',\n  im_pool = true,\n  letzte_aktion = CURRENT_TIMESTAMP\nWHERE id = {{ $json.id }}\nRETURNING id, name, email, plz_wohnort",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1344,
+        -416
+      ],
+      "id": "16bbc368-2ae0-4d4d-9b11-54864ba27b0a",
+      "name": "DB - Absage speichern (manuell)",
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Einladen oder Absagen?').first().json.email_from || $('Einladen oder Absagen?').first().json.email }}",
+        "subject": "=[REF:{{ $('DB - Absage speichern (manuell)').first().json.id }}] Deine Bewerbung als Objektbesichtiger:in bei Certa",
+        "message": "=Hallo {{ $('Einladen oder Absagen?').first().json.name }},<br><br>\nvielen Dank fuer Deine Bewerbung als Objektbesichtiger:in bei Certa. Wir haben uns Dein Profil angeschaut und finden es grundsaetzlich interessant.<br>\nAktuell ist die Region, fuer die Du Dich beworben hast, bei uns sehr gut abgedeckt. Wir haben dort genueg Kapazitaet und muessen daher leider erstmal absagen.<br><br>\nWenn Du einverstanden bist, behalten wir Deine Unterlagen in unserem Pool und melden uns, sobald sich in Deiner Region etwas aendert. Falls Du das nicht moechtest, antworte einfach kurz auf diese Mail und wir loeschen Deine Daten umgehend.<br>\nWir wuenschen Dir alles Gute und danken Dir nochmal fuer Dein Interesse an Certa.<br><br>\nBeste Gruesse<br>\n<strong>Certa GmbH</strong>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1568,
+        -416
+      ],
+      "id": "6adb1fc3-cf95-4f3b-9548-577d1090a7ff",
+      "name": "Mail - Absage senden (manuell)",
+      "webhookId": "6a25ba97-3893-4f0e-868e-223f30b6465b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "da018LzcF4j1tjvr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nlet id, entscheidung, aktuellerStatus, name, email, plz_wohnort;\nlet istTelegram = false;\n\nif (input.body?.data?.rows) {\n  // Format A: NocoDB-Webhook\n  const row = input.body.data.rows[0];\n  id = row.Id;\n  entscheidung = row.manuelle_entscheidung;\n  aktuellerStatus = row.status;\n  name = row.name;\n  email = row.email;\n  plz_wohnort = row.plz_wohnort;\n} else if (input.callback_query) {\n  // Format B: Telegram Inline-Button Callback\n  istTelegram = true;\n  const callbackData = (input.callback_query.data || '').replace(/^=/, ''); // z.B. \"einladen:2\"\n  const [aktion, idStr] = callbackData.split(':');\n  entscheidung = aktion;\n  id = parseInt(idStr, 10);\n} else {\n  return [];\n}\n\nconst gueltigeEntscheidungen = ['einladen', 'absagen'];\nif (!gueltigeEntscheidungen.includes(entscheidung)) {\n  return [];\n}\n\nif (!istTelegram && aktuellerStatus !== 'manuell_pruefen') {\n  return [];\n}\n\nreturn [{\n  json: {\n    id,\n    name: name || null,\n    email: email || null,\n    email_from: email || null,\n    plz_wohnort: plz_wohnort || null,\n    manuelle_entscheidung: entscheidung,\n    ist_telegram: istTelegram,\n    telegram_chat_id: istTelegram ? input.callback_query.message.chat.id : null,\n    telegram_message_id: istTelegram ? input.callback_query.message.message_id : null,\n    telegram_callback_query_id: istTelegram ? input.callback_query.id : null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        -512
+      ],
+      "id": "03385c42-ff2d-472d-bc2a-8a7f6fbab322",
+      "name": "Normalisieren + Filter"
+    },
+    {
+      "parameters": {
+        "content": "Erkennt beide Eingangsformate und vereinheitlicht sie. Schutz vor mehrfacher manuellen Bearbeitung und Endlosschleifen.",
+        "width": 208,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        176,
+        -688
+      ],
+      "id": "004614cc-5a45-4d13-9219-80189569979d",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        -416
+      ],
+      "id": "acb0c1b2-300f-44c4-94cb-4e6b39170e76",
+      "name": "Telegram Trigger",
+      "webhookId": "0f7de028-8678-446e-8176-fa4c0227dc3f",
+      "credentials": {
+        "telegramApi": {
+          "id": "5ArSRW2oT2zHDbhh",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3b2a190a-1568-42e9-ab99-500b682aafdb",
+              "leftValue": "={{ $json.ist_telegram }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        -512
+      ],
+      "id": "2b973afe-1e93-4dfc-8a91-f558be4937e7",
+      "name": "Ist Telegram?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, email, plz_wohnort, status_\nFROM pga7yket86jj0rl.bewerbungen\nWHERE id = {{ $json.id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        672,
+        -576
+      ],
+      "id": "094e44e3-0ac2-47c4-aca1-83e0303e49e2",
+      "name": "DB - Bewerber-Daten nachladen",
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const normalisiert = $('Normalisieren + Filter').first().json;\nconst dbDaten = $input.first().json;\n\n// Status-Check: nur weiter wenn noch in manueller Pruefung\nif (dbDaten.status_ !== 'manuell_pruefen') {\n  return [];\n}\n\nreturn [{\n  json: {\n    id: dbDaten.id,\n    name: dbDaten.name,\n    email: dbDaten.email,\n    email_from: dbDaten.email,\n    plz_wohnort: dbDaten.plz_wohnort,\n    manuelle_entscheidung: normalisiert.manuelle_entscheidung,\n    ist_telegram: true,\n    telegram_chat_id: normalisiert.telegram_chat_id,\n    telegram_message_id: normalisiert.telegram_message_id,\n    telegram_callback_query_id: normalisiert.telegram_callback_query_id\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -576
+      ],
+      "id": "8cdca337-4298-4190-aa5c-a50713e98e34",
+      "name": "Merge Telegram-Daten"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e304d293-c7ae-46e4-b992-3c86d5104546",
+              "leftValue": "={{ $('Merge Telegram-Daten').isExecuted }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1792,
+        -512
+      ],
+      "id": "ef8ec4a8-50c4-47bd-8b3b-decd7e97a617",
+      "name": "Ist Telegram? (Ende)"
+    },
+    {
+      "parameters": {
+        "chatId": "=8813663449",
+        "text": "={{ ($('Merge Telegram-Daten').first().json.manuelle_entscheidung === 'einladen' ? '✅ Einladung an ' : '❌ Absage an ') + $('Merge Telegram-Daten').first().json.name + ' wird versendet (' + new Date().toLocaleString('de-DE', {timeZone: 'Europe/Berlin'}) + ')' }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2016,
+        -512
+      ],
+      "id": "0bb23e72-42c3-4611-bfaf-9d493b048a24",
+      "name": "Telegram - Bestaetigung senden",
+      "webhookId": "0d501921-ab07-4c5d-99bf-59bbba5e750c",
+      "credentials": {
+        "telegramApi": {
+          "id": "5ArSRW2oT2zHDbhh",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Kombiniert nachgeladene DB-Daten mit der Entscheidung aus dem Callback. Schutz vor mehrfachem Klicken einer Antwort.",
+        "height": 128,
+        "width": 272,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        848,
+        -720
+      ],
+      "id": "4089b9c7-9e4f-4500-ad2c-0d303c32ecd1",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "NocoDB-Webhook. Liefert komplette Zeile inkl. vorherigem und neuem Status zur Spalte \"manuelle_entscheidung\".",
+        "height": 128,
+        "width": 224,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        -752
+      ],
+      "id": "eb53212a-c072-4c00-9ea6-6abbb0430816",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Zweiter Trigger für die Inline-Buttons aus Workflow 1. Nur ein Telegram-Trigger pro Bot möglich. Liegt daher zentral hier statt in Workflow 1.",
+        "height": 128,
+        "width": 256,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -256
+      ],
+      "id": "d6361dd3-7014-4172-87a7-f8265219cc4d",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "Verzweigt je nach Eingangsformat: Telegram braucht zusätzliches Nachladen der Bewerber-Daten, NocoDB liefert bereits alles.",
+        "width": 224,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        384,
+        -368
+      ],
+      "id": "ef5755f8-c727-4fb3-b687-f4f939b5d883",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "Telegram-Callback enthält nur ID + Aktion — Name/E-Mail/PLZ/Status werden hier per SELECT nachgeladen.",
+        "height": 128,
+        "width": 224,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        608,
+        -720
+      ],
+      "id": "37e5ea2b-ab8b-4043-b538-60ac9a8b4b9c",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "Zwei finale Pfade, da eine Rückfrage hier nicht nötig ist.",
+        "height": 80,
+        "width": 256,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1024,
+        -352
+      ],
+      "id": "0a15df37-9ae4-40da-8bef-24161b1c6b7a",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "Status-Update des geprüften Datensatzes.",
+        "height": 80,
+        "width": 208,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        -704
+      ],
+      "id": "250656c1-f443-4164-9c87-1035f3cd90a5",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "Versenden der Emailvorlage 1.",
+        "height": 80,
+        "width": 150,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1552,
+        -704
+      ],
+      "id": "59aba2ed-8b83-49ba-975b-bbdc0b42bc6f",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "Versenden der Emailvorlage 2.",
+        "height": 80,
+        "width": 150,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1536,
+        -240
+      ],
+      "id": "1b156c88-29c3-4613-8c5c-9ab5d242d50a",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "content": "Nur beim Telegram-Pfad soll eine Bestätigung zurückgehen. ",
+        "height": 80,
+        "width": 214,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1728,
+        -368
+      ],
+      "id": "80c814e0-8125-47df-b11d-3093d354b510",
+      "name": "Sticky Note10"
+    },
+    {
+      "parameters": {
+        "content": "Automatische Nachricht an Mitarbeiter:in.",
+        "height": 80,
+        "width": 150,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        -608
+      ],
+      "id": "9f05a6e4-abbb-48d2-a704-431f0c3225b6",
+      "name": "Sticky Note11"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalisieren + Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Einladung speichern (manuell)": {
+      "main": [
+        [
+          {
+            "node": "Mail - Einladung senden (manuell)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Absage speichern (manuell)": {
+      "main": [
+        [
+          {
+            "node": "Mail - Absage senden (manuell)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einladen oder Absagen?": {
+      "main": [
+        [
+          {
+            "node": "DB - Einladung speichern (manuell)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "DB - Absage speichern (manuell)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalisieren + Filter": {
+      "main": [
+        [
+          {
+            "node": "Ist Telegram?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalisieren + Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ist Telegram?": {
+      "main": [
+        [
+          {
+            "node": "DB - Bewerber-Daten nachladen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Einladen oder Absagen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Bewerber-Daten nachladen": {
+      "main": [
+        [
+          {
+            "node": "Merge Telegram-Daten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Telegram-Daten": {
+      "main": [
+        [
+          {
+            "node": "Einladen oder Absagen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail - Einladung senden (manuell)": {
+      "main": [
+        [
+          {
+            "node": "Ist Telegram? (Ende)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail - Absage senden (manuell)": {
+      "main": [
+        [
+          {
+            "node": "Ist Telegram? (Ende)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ist Telegram? (Ende)": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Bestaetigung senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "90186682-6e5b-454e-aadb-8a1a882476cd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b27e3452801c9eec963c1e30854af00b7617633d48fa019713e60a3c43a0cd5d"
+  },
+  "nodeGroups": [],
+  "id": "6cHGQ9in6wfekxlx",
+  "tags": []
+}

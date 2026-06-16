@@ -1,0 +1,321 @@
+{
+  "name": "Sub-Workflow 1 - Rueckfrage",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "c055762a-8fe7-4141-a639-df2372f30060",
+      "typeVersion": 1.1,
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        272,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\n// Betreff nach REF-ID durchsuchen\nconst subject = item.Subject || item.subject || '';\nconst refMatch = subject.match(/\\[REF:(\\d+)\\]/i);\n\nif (!refMatch) {\n  // Keine REF-ID gefunden - kein Rückfrage-Loop\n  return [{\n    json: {\n      ...item,\n      ref_id: null,\n      ist_rueckfrage: false\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...item,\n    ref_id: parseInt(refMatch[1]),\n    ist_rueckfrage: true,\n    antwort_text: item.text || item.snippet || ''\n  }\n}];ok "
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        352
+      ],
+      "id": "1be9a1db-8093-4371-bc05-48c090c20a70",
+      "name": "REF ID extrahieren"
+    },
+    {
+      "parameters": {
+        "jsCode": "const bewerbung = $input.first().json;\nconst antwortText = $('REF ID extrahieren').first().json.antwort_text;\nconst emailFrom = $('REF ID extrahieren').first().json.From || \n                  $('REF ID extrahieren').first().json.from?.value?.[0]?.address || '';\n\n// Fehlende Felder aus der Antwort extrahieren via Regex\nlet verfuegbarkeit = bewerbung.verfuegbarkeit_stunden_pro_woche;\nlet berufserfahrung = bewerbung.berufserfahrung_jahre;\nlet plzWohnort = bewerbung.plz_wohnort;\n\n// Verfuegbarkeit aus Antwort extrahieren\nif (!verfuegbarkeit) {\n  const match = antwortText.match(/(\\d+)\\s*(?:Stunden?|h|Std)(?:\\s*(?:pro|\\/)\\s*Woche)?/i);\n  if (match) verfuegbarkeit = parseInt(match[1]);\n}\n\n// Berufserfahrung aus Antwort extrahieren\nif (!berufserfahrung) {\n  const match = antwortText.match(/(\\d+)\\s*(?:Jahre?|Jahren)/i);\n  if (match) berufserfahrung = parseInt(match[1]);\n}\n\n// PLZ aus Antwort extrahieren\nif (!plzWohnort) {\n  const match = antwortText.match(/\\b(\\d{5})\\b/);\n  if (match) plzWohnort = match[1].substring(0, 2);\n}\n\nconst now = new Date().toISOString();\n\nreturn [{\n  json: {\n    ...bewerbung,\n    verfuegbarkeit_stunden_pro_woche: verfuegbarkeit,\n    berufserfahrung_jahre: berufserfahrung,\n    plz_wohnort: plzWohnort,\n    email_from: emailFrom || bewerbung.email,\n    letzte_aktion: now,\n    historie: JSON.stringify([\n      ...JSON.parse(bewerbung.historie || '[]'),\n      {action: 'rueckfrage_beantwortet', timestamp: now}\n    ])\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        352
+      ],
+      "id": "2f4726c8-d4d0-42c6-b03b-6fe1a2caaf2e",
+      "name": "Antwort mergen"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM pga7yket86jj0rl.bewerbungen \nWHERE id = {{ $json.ref_id }}\nLIMIT 1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        720,
+        352
+      ],
+      "id": "3815bf8c-63e8-4047-b96a-c16571646cb7",
+      "name": "DB - Bewerbung laden",
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pga7yket86jj0rl.bewerbungen SET\n  verfuegbarkeit_stunden_pro_woche = {{ $json.verfuegbarkeit_stunden_pro_woche ?? 'NULL' }},\n  berufserfahrung_jahre = {{ $json.berufserfahrung_jahre ?? 'NULL' }},\n  plz_wohnort = {{ $json.plz_wohnort ? \"'\" + $json.plz_wohnort + \"'\" : 'NULL' }},\n  status_ = 'in_bewertung',\n  letzte_aktion = CURRENT_TIMESTAMP,\n  historie = '{{ $json.historie }}'\nWHERE id = {{ $json.id }}\nRETURNING id, name, email, verfuegbarkeit_stunden_pro_woche, berufserfahrung_jahre, plz_wohnort, abgedeckte_plz, vorheriger_beruf, iso_zertifizierung, fuehrerschein, kurzmotivation, wohnort, telefon, max_fahrtweg_km",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1168,
+        352
+      ],
+      "id": "a9d7ff36-97ad-41fb-a649-455fcfa78422",
+      "name": "DB - Bewerbung updaten",
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-f8uj.srv1748804.hstgr.cloud/webhook/bewerbung",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Webhook Body aufbauen').first().json.webhook_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1616,
+        352
+      ],
+      "id": "18a9b6de-d95e-40c7-afe7-82b5fde31b57",
+      "name": "Workflow 1 triggern"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nconst abgedecktePlz = Array.isArray(item.abgedeckte_plz) \n  ? item.abgedeckte_plz \n  : (item.abgedeckte_plz || '').split(',').filter(x => x.trim());\n\nreturn [{\n  json: {\n    webhook_body: JSON.stringify({\n      id: item.id,\n      name: item.name,\n      email: item.email,\n      telefon: item.telefon,\n      wohnort: item.wohnort,\n      plz_wohnort: item.plz_wohnort,\n      abgedeckte_plz: abgedecktePlz,\n      max_fahrtweg_km: item.max_fahrtweg_km ? parseInt(item.max_fahrtweg_km) : null,\n      berufserfahrung_jahre: item.berufserfahrung_jahre ? parseInt(item.berufserfahrung_jahre) : null,\n      vorheriger_beruf: item.vorheriger_beruf,\n      verfuegbarkeit_stunden_pro_woche: item.verfuegbarkeit_stunden_pro_woche ? parseInt(item.verfuegbarkeit_stunden_pro_woche) : null,\n      iso_zertifizierung: item.iso_zertifizierung,\n      fuehrerschein: item.fuehrerschein,\n      kurzmotivation: item.kurzmotivation\n    })\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        352
+      ],
+      "id": "5974ce2e-e60d-4dca-a9b6-5786096609c6",
+      "name": "Webhook Body aufbauen"
+    },
+    {
+      "parameters": {
+        "content": "Trigger-Node für den Aufruf aus Workflow 1 (Pfad \"Rueckfrage-Antwort? = ja\"). Passthrough-Modus übernimmt den Gmail-Trigger-Output 1:1.",
+        "height": 128,
+        "width": 272,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        176,
+        208
+      ],
+      "id": "c83e95a2-ea59-49b8-874d-5be8d1281db1",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Sucht [REF:ID] im Betreff der Antwort-Mail. Ohne REF-ID gilt die Mail als neue Bewerbung (ist_rueckfrage=false) — Fallback für unklare Zuordnung statt Absturz.",
+        "width": 272,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        512
+      ],
+      "id": "d90b6404-9026-4128-8b4b-e2bbd11d484d",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "Holt den bestehenden Datensatz per ref_id, um die Antwort korrekt zuordnen und mergen zu können.",
+        "height": 112,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        640,
+        224
+      ],
+      "id": "235cc0cb-ae65-4490-9646-276522bfbaa3",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Extrahiert Verfügbarkeit /\nErfahrung / PLZ per Regex aus dem Antworttext und ergänzt nur fehlende Felder im bestehenden Datensatz — vorhandene Werte bleiben unverändert. Historie wird fortgeschrieben.",
+        "height": 208,
+        "width": 256,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        864,
+        512
+      ],
+      "id": "c310165b-f2b8-4e98-b05e-284ef81c27a3",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "UPDATE statt INSERT, da der Datensatz bereits existiert. Status zurück auf in_bewertung — Bewerbung wird danach erneut komplett bewertet (Re-Scoring mit aktualisierten Daten).\n",
+        "height": 176,
+        "width": 256,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1088,
+        160
+      ],
+      "id": "9a6b1dd1-f8a4-4be6-96b9-19d35bf932fa",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "Baut denselben JSON-Payload wie ein Direkt-JSON-Eingang, damit Workflow 1 ohne Sonderfall erneut durchlaufen werden kann.",
+        "height": 128,
+        "width": 256,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1312,
+        512
+      ],
+      "id": "31f133b6-15d9-44cb-85ea-358333d4e90e",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "Ruft Workflow 1 über dessen Webhook erneut auf — nutzt dieselbe Bewertungslogik wie ein Erst-Eingang, kein Duplikat-Code für die Bewertung.",
+        "height": 128,
+        "width": 272,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1520,
+        208
+      ],
+      "id": "6408bb47-af71-41eb-8d72-514417d6e15b",
+      "name": "Sticky Note6"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "REF ID extrahieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "REF ID extrahieren": {
+      "main": [
+        [
+          {
+            "node": "DB - Bewerbung laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Antwort mergen": {
+      "main": [
+        [
+          {
+            "node": "DB - Bewerbung updaten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Bewerbung laden": {
+      "main": [
+        [
+          {
+            "node": "Antwort mergen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Bewerbung updaten": {
+      "main": [
+        [
+          {
+            "node": "Webhook Body aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Body aufbauen": {
+      "main": [
+        [
+          {
+            "node": "Workflow 1 triggern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedPerExecution": 6
+  },
+  "versionId": "ff675e1a-8e4a-4b1c-9807-fd7b86068dd2",
+  "meta": {
+    "instanceId": "b27e3452801c9eec963c1e30854af00b7617633d48fa019713e60a3c43a0cd5d"
+  },
+  "nodeGroups": [],
+  "id": "0YAWgPG6eVsbUVXs",
+  "tags": []
+}

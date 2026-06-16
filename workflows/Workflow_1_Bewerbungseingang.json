@@ -1,0 +1,1321 @@
+{
+  "name": "Workflow 1 - Bewerbungseingang",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "maxResults": 1,
+        "filters": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -160,
+        -112
+      ],
+      "id": "a331b1b0-261c-4496-9d4a-c992fdc713ac",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "da018LzcF4j1tjvr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\n\n// Erkennen ob Gmail-Pfad (Claude Response) oder Webhook-Pfad (direktes JSON)\nlet parsed;\nif (raw.content && raw.content[0]) {\n  // Gmail-Pfad: Claude Response parsen\n  try {\n    const text = raw.content[0].text.replace(/```json|```/g, '').trim();\n    parsed = JSON.parse(text);\n  } catch(e) {\n    parsed = {};\n  }\n} else {\n  // Webhook-Pfad: Daten direkt nutzen\n  parsed = raw;\n}\n\nlet spamScore = 0;\nconst gruende = [];\n\n// PLZ ungueltig pruefen\nconst plz = parsed.plz_wohnort || '';\nif (plz === '00000' || plz.toLowerCase().includes('alle')) {\n  spamScore += 1;\n  gruende.push('PLZ ungueltig');\n}\n\n// Verfuegbarkeit extrem pruefen\nconst verfuegbarkeit = parsed.verfuegbarkeit_stunden_pro_woche || 0;\nif (verfuegbarkeit > 80) {\n  spamScore += 1;\n  gruende.push('Verfuegbarkeit unrealistisch');\n}\n\n// Berufserfahrung extrem pruefen\nconst erfahrung = parsed.berufserfahrung_jahre || 0;\nif (erfahrung > 60) {\n  spamScore += 1;\n  gruende.push('Berufserfahrung unrealistisch');\n}\n\n// Name in Grossbuchstaben pruefen\nconst name = parsed.name || '';\nif (name.length > 3 && name === name.toUpperCase()) {\n  spamScore += 1;\n  gruende.push('Name in Grossbuchstaben');\n}\n\n// Motivation zu kurz pruefen\nconst motivation = parsed.kurzmotivation || '';\nif (motivation.length > 0 && motivation.length < 20) {\n  spamScore += 1;\n  gruende.push('Kurzmotivation zu kurz');\n}\n\n// Werbliche Begriffe in Motivation pruefen\nconst werblich = ['rendite', 'garantie', 'klicken sie', 'einzigartige gelegenheit', 'kaufen'];\nif (werblich.some(w => motivation.toLowerCase().includes(w))) {\n  spamScore += 2;\n  gruende.push('Werbliche Begriffe');\n}\n\nconst now = new Date().toISOString();\n\nreturn [{\n  json: {\n    ...parsed,\n    email_from: parsed.email_from || parsed.email || '',\n    spam_score: spamScore,\n    spam_gruende: gruende,\n    ist_spam: spamScore >= 4,\n    eingegangen_am: parsed.eingegangen_am || now,\n    letzte_aktion: parsed.letzte_aktion || now,\n    historie: parsed.historie || JSON.stringify([{action: 'ingested', timestamp: now}])\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        80
+      ],
+      "id": "954c256e-a7c2-4341-9007-4188c40ba1e7",
+      "name": "Spam Heuristik"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "YOUR_ANTHROPIC_API_KEY_HERE"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{ $json.claude_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        -16
+      ],
+      "id": "dcfbac5b-2d23-4316-bc72-c1a92a58afc3",
+      "name": "Claude API - E-Mail parsen"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b7599817-47c9-4814-a69f-6a4ac8612655",
+              "leftValue": "={{ ($json.subject || $json.Subject || \"\").toLowerCase() }}",
+              "rightValue": "bewerbung",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            },
+            {
+              "id": "e718e904-a5f6-4590-88f2-e60a6f47e8f5",
+              "leftValue": "={{ ($json.subject || $json.Subject || \"\").toLowerCase() }}",
+              "rightValue": "objektbesichtiger",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            },
+            {
+              "id": "a1f7d46e-b8ef-42f2-b1be-fbfdb6a6d2d8",
+              "leftValue": "={{ ($json.subject || $json.Subject || \"\").toLowerCase() }}",
+              "rightValue": "ob stelle",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        64,
+        -112
+      ],
+      "id": "d5da9f59-b8c9-445b-9c16-4c9e58f37f85",
+      "name": "Betreff-Filter"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a62ac5e5-a332-4d8d-8bdf-9915cc68cd3c",
+              "leftValue": "={{ $json.ist_spam }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1408,
+        80
+      ],
+      "id": "d384d11c-9eb7-4a30-bd44-5fea8bbac35e",
+      "name": "Spam?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pga7yket86jj0rl.bewerbungen \n(name, email, status_, ki_begruendung, eingegangen_am, letzte_aktion)\nVALUES (\n  '{{ $json.name }}',\n  '{{ $json.email }}',\n  'spam_aussortiert',\n  'Spam erkannt: {{ $json.spam_gruende.join(\", \") }}',\n  CURRENT_TIMESTAMP,\n  CURRENT_TIMESTAMP\n)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1632,
+        -16
+      ],
+      "id": "ad42afe6-fd1b-41e3-afa0-d2bf832dd8f5",
+      "name": "Spam aussortieren",
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Vollstaendigkeit pruefen').first().json.email_from || $('Vollstaendigkeit pruefen').first().json.email }}",
+        "subject": "=[REF:{{ $('DB - Rueckfrage speichern').first().json[0]?.id || $('DB - Rueckfrage speichern').first().json.id }}] Kurze Rueckfrage zu Deiner Bewerbung bei Certa",
+        "message": "=Hallo {{ $('Vollstaendigkeit pruefen').first().json.name }},<br><br>\nvielen Dank fuer Deine Bewerbung als Objektbesichtiger:in.<br>\nBevor wir Dein Profil final bewerten koennen, fehlen uns noch folgende Angaben:<br><br>\n{{ (Array.isArray($('Vollstaendigkeit pruefen').first().json.fehlende_felder) ? $('Vollstaendigkeit pruefen').first().json.fehlende_felder : [$('Vollstaendigkeit pruefen').first().json.fehlende_felder]).map(f => '<strong>' + f + '</strong>').join('<br>') }}<br><br>\nMagst Du uns diese Punkte kurz nachreichen? Bitte antworte uns direkt auf diese Mail ohne den Betreff zu verändern.<br><br>\nSobald wir die Infos haben, melden wir uns innerhalb von zwei Werktagen mit einer Rueckmeldung.<br><br>\nBeste Gruesse<br>\n<strong>Certa GmbH</strong>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3200,
+        -160
+      ],
+      "id": "2fe3d357-77ef-4183-86c6-c2b477d6d55c",
+      "name": "Mail - Rückfrage senden",
+      "webhookId": "d5403845-407d-4886-a982-fe343c8b33d9",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "da018LzcF4j1tjvr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  COALESCE(\n    (SELECT bedarf_status\n    FROM pga7yket86jj0rl.bedarfskarte\n    WHERE plz_bereich = ANY(\n      string_to_array(\n        '{{ $(\"Vollstaendigkeit pruefen\").first().json.abgedeckte_plz.join(\",\") }}',\n        ','\n      )\n    )\n    ORDER BY \n      CASE bedarf_status\n        WHEN 'dringend gesucht' THEN 100\n        WHEN 'Aufstockung sinnvoll' THEN 70\n        WHEN 'voll besetzt' THEN 20\n        WHEN 'nicht gefragt' THEN 0\n        ELSE -1\n      END DESC\n    LIMIT 1\n    ), 'unbekannt'\n  ) as bedarf_status,\n  COALESCE(\n    (SELECT CASE bedarf_status\n      WHEN 'dringend gesucht' THEN 100\n      WHEN 'Aufstockung sinnvoll' THEN 70\n      WHEN 'voll besetzt' THEN 20\n      WHEN 'nicht gefragt' THEN 0\n      ELSE -1\n    END\n    FROM pga7yket86jj0rl.bedarfskarte\n    WHERE plz_bereich = ANY(\n      string_to_array(\n        '{{ $(\"Vollstaendigkeit pruefen\").first().json.abgedeckte_plz.join(\",\") }}',\n        ','\n      )\n    )\n    ORDER BY \n      CASE bedarf_status\n        WHEN 'dringend gesucht' THEN 100\n        WHEN 'Aufstockung sinnvoll' THEN 70\n        WHEN 'voll besetzt' THEN 20\n        WHEN 'nicht gefragt' THEN 0\n        ELSE -1\n      END DESC\n    LIMIT 1\n    ), -1\n  ) as plz_score,\n  (SELECT notizen\n    FROM pga7yket86jj0rl.bedarfskarte\n    WHERE plz_bereich = ANY(\n      string_to_array(\n        '{{ $(\"Vollstaendigkeit pruefen\").first().json.abgedeckte_plz.join(\",\") }}',\n        ','\n      )\n    )\n    LIMIT 1\n  ) as notizen\n,\n  (\n    SELECT array_to_string(array_agg(plz), ', ')\n    FROM unnest(string_to_array('{{ $(\"Vollstaendigkeit pruefen\").first().json.abgedeckte_plz.join(\",\") }}', ',')) as plz\n    WHERE plz NOT IN (SELECT plz_bereich FROM pga7yket86jj0rl.bedarfskarte)\n  ) as unbekannte_plz\n,\n  (\n    SELECT array_to_string(array_agg(plz_bereich), ', ')\n    FROM pga7yket86jj0rl.bedarfskarte\n    WHERE plz_bereich = ANY(string_to_array('{{ $(\"Vollstaendigkeit pruefen\").first().json.abgedeckte_plz.join(\",\") }}', ','))\n    AND CASE bedarf_status WHEN 'dringend gesucht' THEN 100 WHEN 'Aufstockung sinnvoll' THEN 70 WHEN 'voll besetzt' THEN 20 WHEN 'nicht gefragt' THEN 0 ELSE -1 END = (\n      SELECT MAX(CASE bedarf_status WHEN 'dringend gesucht' THEN 100 WHEN 'Aufstockung sinnvoll' THEN 70 WHEN 'voll besetzt' THEN 20 WHEN 'nicht gefragt' THEN 0 ELSE -1 END)\n      FROM pga7yket86jj0rl.bedarfskarte\n      WHERE plz_bereich = ANY(string_to_array('{{ $(\"Vollstaendigkeit pruefen\").first().json.abgedeckte_plz.join(\",\") }}', ','))\n    )\n  ) as beste_plz_bereiche",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1856,
+        176
+      ],
+      "id": "d2313090-6abb-4fba-8172-a65dd35f9f37",
+      "name": "DB - PLZ Match",
+      "alwaysOutputData": false,
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pga7yket86jj0rl.bewerbungen \n(id, externe_id, name, email, telefon, wohnort, plz_wohnort, abgedeckte_plz,\nmax_fahrtweg_km, berufserfahrung_jahre, vorheriger_beruf, \nverfuegbarkeit_stunden_pro_woche, iso_zertifizierung, fuehrerschein, \nkurzmotivation, status_, score_, ki_empfehlung, ki_begruendung,\neingegangen_am, letzte_aktion)\nVALUES (\n  {{ typeof $(\"Scoring & Routing\").first().json.id === 'number' ? $(\"Scoring & Routing\").first().json.id : 'DEFAULT' }},\n  {{ $(\"Scoring & Routing\").first().json.externe_id ? \"'\" + $(\"Scoring & Routing\").first().json.externe_id + \"'\" : 'NULL' }},\n  '{{ $(\"Scoring & Routing\").first().json.name }}',\n  '{{ $(\"Scoring & Routing\").first().json.email }}',\n  {{ $(\"Scoring & Routing\").first().json.telefon ? \"'\" + $(\"Scoring & Routing\").first().json.telefon + \"'\" : 'NULL' }},\n  {{ $(\"Scoring & Routing\").first().json.wohnort ? \"'\" + $(\"Scoring & Routing\").first().json.wohnort + \"'\" : 'NULL' }},\n  {{ $(\"Scoring & Routing\").first().json.plz_wohnort ? \"'\" + $(\"Scoring & Routing\").first().json.plz_wohnort + \"'\" : 'NULL' }},\n  {{ $(\"Scoring & Routing\").first().json.abgedeckte_plz?.length ? \"'\" + $(\"Scoring & Routing\").first().json.abgedeckte_plz.join(',') + \"'\" : 'NULL' }},\n  {{ $(\"Scoring & Routing\").first().json.max_fahrtweg_km ?? 'NULL' }},\n  {{ $(\"Scoring & Routing\").first().json.berufserfahrung_jahre ?? 'NULL' }},\n  {{ $(\"Scoring & Routing\").first().json.vorheriger_beruf ? \"'\" + $(\"Scoring & Routing\").first().json.vorheriger_beruf + \"'\" : 'NULL' }},\n  {{ $(\"Scoring & Routing\").first().json.verfuegbarkeit_stunden_pro_woche ?? 'NULL' }},\n  {{ $(\"Scoring & Routing\").first().json.iso_zertifizierung ?? false }},\n  {{ $(\"Scoring & Routing\").first().json.fuehrerschein ?? false }},\n  {{ $(\"Scoring & Routing\").first().json.kurzmotivation ? \"'\" + $(\"Scoring & Routing\").first().json.kurzmotivation.replace(/'/g, \"''\") + \"'\" : 'NULL' }},\n  'einladung_versendet',\n  {{ $(\"Scoring & Routing\").first().json.final_score }},\n  {{ $(\"Scoring & Routing\").first().json.ki_empfehlung ? \"'\" + $(\"Scoring & Routing\").first().json.ki_empfehlung + \"'\" : 'NULL' }},\n  {{ $(\"Scoring & Routing\").first().json.ki_begruendung ? \"'\" + $(\"Scoring & Routing\").first().json.ki_begruendung.replace(/'/g, \"''\") + \"'\" : 'NULL' }},\n  CURRENT_TIMESTAMP,\n  CURRENT_TIMESTAMP\n)\nON CONFLICT (id) DO UPDATE SET\n  status_ = 'einladung_versendet',\n  score_ = EXCLUDED.score_,\n  ki_empfehlung = EXCLUDED.ki_empfehlung,\n  ki_begruendung = EXCLUDED.ki_begruendung,\n  letzte_aktion = CURRENT_TIMESTAMP\nRETURNING id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2992,
+        192
+      ],
+      "id": "a5cf631b-fa70-42dc-8789-c15fca81fbbc",
+      "name": "DB - Einladung speichern",
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Vollstaendigkeit pruefen').first().json.email_from || $('Vollstaendigkeit pruefen').first().json.email }}",
+        "subject": "=[REF:{{ $('DB - Einladung speichern').first().json.id }}] Deine Bewerbung als Objektbesichtiger:in bei Certa",
+        "message": "=Hallo {{ $('Vollstaendigkeit pruefen').first().json.name }},<br><br>\nvielen Dank fuer Deine Bewerbung als Objektbesichtiger:in bei Certa.<br>\nWir freuen uns ueber Dein Interesse und Dein Profil passt sehr gut zu dem, was wir aktuell in der Region <strong>{{ $('Vollstaendigkeit pruefen').first().json.plz_wohnort }}</strong> suchen.<br><br>\nIm naechsten Schritt wuerden wir gerne kurz telefonieren - <strong>etwa 20 bis 30 Minuten.</strong><br>\nWir erklaeren Dir, wie unsere Auftraege ablaufen, welche Verguetung Du erwarten kannst und beantworten Deine Fragen.<br><br>\nDu kannst Dir ganz unkompliziert einen passenden Termin über <a href=\"https://app.usemotion.com/meet/alexander-rausch/c659q8b\" style=\"text-decoration: underline;\">diesen Link</a> aussuchen.\n<br><br>\nBeste Gruesse<br>\n<strong>Certa GmbH</strong>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3200,
+        192
+      ],
+      "id": "cd8f124e-4989-4f7d-943c-37761001b03a",
+      "name": "Mail - Einladung senden",
+      "webhookId": "3becee24-7eec-422b-ad3f-149b0542bd26",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "da018LzcF4j1tjvr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pga7yket86jj0rl.bewerbungen \n(id, externe_id, name, email, telefon, wohnort, plz_wohnort, abgedeckte_plz,\nmax_fahrtweg_km, berufserfahrung_jahre, vorheriger_beruf, \nverfuegbarkeit_stunden_pro_woche, iso_zertifizierung, fuehrerschein, \nkurzmotivation, status_, score_, ki_empfehlung, ki_begruendung,\neingegangen_am, letzte_aktion)\nVALUES (\n  {{ typeof $json.id === 'number' ? $json.id : 'DEFAULT' }},\n  {{ $json.externe_id ? \"'\" + $json.externe_id + \"'\" : 'NULL' }},\n  '{{ $json.name }}',\n  '{{ $json.email }}',\n  {{ $json.telefon ? \"'\" + $json.telefon + \"'\" : 'NULL' }},\n  {{ $json.wohnort ? \"'\" + $json.wohnort + \"'\" : 'NULL' }},\n  {{ $json.plz_wohnort ? \"'\" + $json.plz_wohnort + \"'\" : 'NULL' }},\n  {{ $json.abgedeckte_plz?.length ? \"'\" + $json.abgedeckte_plz.join(',') + \"'\" : 'NULL' }},\n  {{ $json.max_fahrtweg_km ?? 'NULL' }},\n  {{ $json.berufserfahrung_jahre ?? 'NULL' }},\n  {{ $json.vorheriger_beruf ? \"'\" + $json.vorheriger_beruf + \"'\" : 'NULL' }},\n  {{ $json.verfuegbarkeit_stunden_pro_woche ?? 'NULL' }},\n  {{ $json.iso_zertifizierung ?? false }},\n  {{ $json.fuehrerschein ?? false }},\n  {{ $json.kurzmotivation ? \"'\" + $json.kurzmotivation.replace(/'/g, \"''\") + \"'\" : 'NULL' }},\n  'manuell_pruefen',\n  {{ $json.final_score ?? 'NULL' }},\n  {{ \"'\" + $json.ki_empfehlung + \"'\" }},\n  {{ \"'\" + $json.ki_begruendung.replace(/'/g, \"''\") + \"'\" }},\n  CURRENT_TIMESTAMP,\n  CURRENT_TIMESTAMP\n)\nON CONFLICT (id) DO UPDATE SET\n  status_ = 'manuell_pruefen',\n  score_ = EXCLUDED.score_,\n  ki_empfehlung = EXCLUDED.ki_empfehlung,\n  ki_begruendung = EXCLUDED.ki_begruendung,\n  letzte_aktion = CURRENT_TIMESTAMP\nRETURNING id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2992,
+        16
+      ],
+      "id": "6b0cb610-2d74-440b-9317-8e5ac81f682a",
+      "name": "DB - Grenzfall speichern",
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "8813663449",
+        "text": "=🔔 Neue Bewerbung zur manuellen Prüfung\n👤 Name: {{ $json.name }}\n📍 Wohnort-PLZ: {{ $json.plz_wohnort }} | Abdeckung: {{ $json.abgedeckte_plz?.join(', ') }}\n💼 Beruf: {{ $json.vorheriger_beruf }}\n⏰ Verfügbarkeit: {{ $json.verfuegbarkeit_stunden_pro_woche }}h/Woche\n⭐ Score: {{ $json.final_score != null ? $json.final_score + '/100' : 'n/a (PLZ unbekannt)' }}\n🤖 KI-Empfehlung: {{ $json.ki_empfehlung }}\n💬 Begründung: {{ $json.ki_begruendung }}\n👉 <a href=\"http://46.202.154.208:8080/wasrxkfn/pga7yket86jj0rl/mwwcum5h8oigq7h/vwwr72k1hitqnj03/bewerbungen-kanban\">Im Kanban-Dashboard entscheiden</a>",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Einladen",
+                    "additionalFields": {
+                      "callback_data": "=={{ 'einladen:' + $('DB - Grenzfall speichern').first().json.id }}"
+                    }
+                  },
+                  {
+                    "text": "❌ Absagen",
+                    "additionalFields": {
+                      "callback_data": "=={{ 'absagen:' + $('DB - Grenzfall speichern').first().json.id }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3200,
+        16
+      ],
+      "id": "12daff07-a77b-4071-8dc0-c29a5c22b772",
+      "name": "Telegram - Benachrichtigung",
+      "webhookId": "4a872049-973d-4156-8e8b-354abdf45264",
+      "credentials": {
+        "telegramApi": {
+          "id": "5ArSRW2oT2zHDbhh",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\n// Feldnamen normalisieren\nitem.plz_wohnort = item.plz_wohnort || item.plz || null;\nitem.vorheriger_beruf = item.vorheriger_beruf || item.beruf || null;\n\n// Fallback: PLZ aus abgedeckte_plz\nif (!item.plz_wohnort && item.abgedeckte_plz && item.abgedeckte_plz.length > 0) {\n  item.plz_wohnort = item.abgedeckte_plz[0];\n}\n\n// Fallback: PLZ aus email_text (nur wenn verfuegbar)\nif (!item.plz_wohnort) {\n  try {\n    const emailText = $('E-Mail Text extrahieren').first().json.email_text || '';\n    const plzMatch = emailText.match(/PLZ[:\\s]+(\\d{5})/i);\n    if (plzMatch) item.plz_wohnort = plzMatch[1];\n  } catch(e) {\n    // Webhook-Pfad: kein E-Mail Text verfuegbar\n  }\n}\n\n// Pflichtfelder pruefen\nconst fehlend = [];\nif (!item.plz_wohnort) fehlend.push('PLZ Wohnort');\nif (!item.verfuegbarkeit_stunden_pro_woche) fehlend.push('Verfuegbarkeit');\nif (!item.berufserfahrung_jahre && item.berufserfahrung_jahre !== 0) fehlend.push('Berufserfahrung');\n\nreturn [{\n  json: {\n    ...item,\n    plz_wohnort: item.plz_wohnort,\n    vorheriger_beruf: item.vorheriger_beruf,\n    fehlende_felder: fehlend,\n    hat_fehlende_felder: fehlend.length > 0\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        176
+      ],
+      "id": "71f99eae-384d-4905-bd9b-720d6b4e6e22",
+      "name": "Vollstaendigkeit pruefen"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pga7yket86jj0rl.bewerbungen \n(externe_id, name, email, telefon, wohnort, plz_wohnort, abgedeckte_plz,\nmax_fahrtweg_km, berufserfahrung_jahre, vorheriger_beruf, \nverfuegbarkeit_stunden_pro_woche, iso_zertifizierung, fuehrerschein, \nkurzmotivation, status_, fehlende_felder, eingegangen_am, letzte_aktion)\nVALUES (\n  {{ $('Vollstaendigkeit pruefen').first().json.externe_id ? \"'\" + $('Vollstaendigkeit pruefen').first().json.externe_id + \"'\" : 'NULL' }},\n  '{{ $('Vollstaendigkeit pruefen').first().json.name }}',\n  '{{ $('Vollstaendigkeit pruefen').first().json.email }}',\n  {{ $('Vollstaendigkeit pruefen').first().json.telefon ? \"'\" + $('Vollstaendigkeit pruefen').first().json.telefon + \"'\" : 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.wohnort ? \"'\" + $('Vollstaendigkeit pruefen').first().json.wohnort + \"'\" : 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.plz_wohnort ? \"'\" + $('Vollstaendigkeit pruefen').first().json.plz_wohnort + \"'\" : 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.abgedeckte_plz?.length ? \"'\" + $('Vollstaendigkeit pruefen').first().json.abgedeckte_plz.join(',') + \"'\" : 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.max_fahrtweg_km ?? 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.berufserfahrung_jahre ?? 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.vorheriger_beruf ? \"'\" + $('Vollstaendigkeit pruefen').first().json.vorheriger_beruf + \"'\" : 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.verfuegbarkeit_stunden_pro_woche ?? 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.iso_zertifizierung ?? false }},\n  {{ $('Vollstaendigkeit pruefen').first().json.fuehrerschein ?? false }},\n  {{ $('Vollstaendigkeit pruefen').first().json.kurzmotivation ? \"'\" + $('Vollstaendigkeit pruefen').first().json.kurzmotivation.replace(/'/g, \"''\") + \"'\" : 'NULL' }},\n  'rueckfrage_offen',\n  {{ $('Vollstaendigkeit pruefen').first().json.fehlende_felder?.length ? \"'\" + $('Vollstaendigkeit pruefen').first().json.fehlende_felder.join(',') + \"'\" : 'NULL' }},\n  CURRENT_TIMESTAMP,\n  CURRENT_TIMESTAMP\n)\nRETURNING id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2992,
+        -160
+      ],
+      "id": "758c7052-5299-4db8-b132-f5277cf73252",
+      "name": "DB - Rueckfrage speichern",
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nreturn [{\n  json: {\n    email_from: item.from?.value?.[0]?.address || '',\n    email_subject: item.subject || '',\n    email_text: item.text || item.html?.replace(/<[^>]*>/g, ' ') || '',\n    email_date: item.date || new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        -16
+      ],
+      "id": "ff981018-2f91-4140-8621-a61266c03f27",
+      "name": "E-Mail Text extrahieren"
+    },
+    {
+      "parameters": {
+        "jsCode": "const email = $input.first().json;\n\nconst emailPrompt = 'Du wertest Bewerbungs-E-Mails fuer Objektbesichtiger aus. Extrahiere ALLE Felder als JSON.\\n\\nREGELN:\\n- telefon: Telefonnummer. Erkenne auch: Mobil, Handy, Tel, Fon, Mobile, Telefonnummer, Durchwahl\\n- wohnort: Stadt/Ort des Bewerbers. Erkenne auch: wohne in X, lebe in X, komme aus X, wohnhaft in X\\n- plz_wohnort: vollstaendige PLZ des Wohnorts als string (z.B. \"24103\"), NICHT kuerzen\\n- berufserfahrung_jahre: Zahlen vor Jahre/Jahren\\n- verfuegbarkeit_stunden_pro_woche: Zahlen vor Stunden/h/Std/Woche\\n- max_fahrtweg_km: Zahlen vor km/Kilometer/Reichweite\\n- vorheriger_beruf: Berufsbezeichnung. Erkenne auch: Karriere, Taetigkeit, Job, Position\\n- iso_zertifizierung: true wenn Ja/yes/vorhanden/zertifiziert\\n- fuehrerschein: true wenn Ja/yes/vorhanden\\n- abgedeckte_plz: nur erste 2 Ziffern jeder PLZ als Array, z.B. [\"24\",\"23\"]\\n- kurzmotivation: alles nach Motivation: oder letzter Absatz\\n- Fehlende Werte: null\\n\\nGib NUR dieses JSON zurueck ohne Markdown:\\n{\"name\":null,\"email\":null,\"telefon\":null,\"wohnort\":null,\"plz_wohnort\":null,\"abgedeckte_plz\":[],\"max_fahrtweg_km\":null,\"berufserfahrung_jahre\":null,\"vorheriger_beruf\":null,\"verfuegbarkeit_stunden_pro_woche\":null,\"iso_zertifizierung\":false,\"fuehrerschein\":false,\"kurzmotivation\":null}\\n\\nE-Mail:\\n' + email.email_text;\n\nreturn [{\n  json: {\n    email_from: email.email_from,\n    email_date: email.email_date,\n    claude_body: JSON.stringify({\n      model: 'claude-sonnet-4-6',\n      max_tokens: 1024,\n      messages: [{ role: 'user', content: emailPrompt }]\n    })\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        -16
+      ],
+      "id": "2394daf6-62b9-43ce-a4fe-cac7eddfae1b",
+      "name": "Claude Body"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.final_routing }}",
+                    "rightValue": "manuell_pruefen",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "9b7d68eb-eedf-49fa-b007-2cfc3c269c88"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "96000d0c-4f77-4698-a11b-a98684d3910f",
+                    "leftValue": "={{ $json.final_routing }}",
+                    "rightValue": "einladung_versendet",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0b0494b2-6568-4b32-a9fb-20c4b81fd3cc",
+                    "leftValue": "={{ $json.final_routing }}",
+                    "rightValue": "absage_versendet",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2576,
+        176
+      ],
+      "id": "90a9cad9-e500-4c87-a6c6-e9d71a07828a",
+      "name": "Einladung oder Grenzfall?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $('Vollstaendigkeit pruefen').first().json;\nconst plzResult = $input.first().json;\n// PLZ Score\nlet plzScore = 0;\nlet plzUnbekannt = false;\nlet alleVoll = false;\nif (!plzResult || plzResult.plz_score === undefined) {\n  plzUnbekannt = true;\n  plzScore = 0;\n} else if (plzResult.plz_score === -1) {\n  plzUnbekannt = true;\n  plzScore = 0;\n} else if (plzResult.plz_score <= 20) {\n  alleVoll = true;\n  plzScore = plzResult.plz_score;\n} else {\n  plzScore = plzResult.plz_score;\n}\n// Verfuegbarkeits-Score (linear: 0h=0, 30h+=100)\nconst verfuegbarkeit = item.verfuegbarkeit_stunden_pro_woche || 0;\nconst verfuegbarkeitsScore = Math.min(100, Math.round((verfuegbarkeit / 30) * 100));\n// Vollstaendigkeits-Score\nconst optionaleFelder = ['telefon', 'wohnort', 'max_fahrtweg_km', 'vorheriger_beruf', 'kurzmotivation'];\nconst ausgefuellt = optionaleFelder.filter(f => item[f] != null && item[f] !== '').length;\nconst vollstaendigkeitsScore = Math.round((ausgefuellt / optionaleFelder.length) * 100);\n// ISO Score\nconst isoScore = item.iso_zertifizierung ? 100 : 0;\n// Gesamtscore\nconst finalScore = Math.round(\n  (plzScore * 0.50) +\n  (verfuegbarkeitsScore * 0.25) +\n  (vollstaendigkeitsScore * 0.15) +\n  (isoScore * 0.10)\n);\n// Hilfsvariablen fuer Begruendungen\nconst plzInfo = item.plz_wohnort || 'unbekannt';\nconst berufsInfo = item.vorheriger_beruf || 'nicht angegeben';\nconst bedarfInfo = plzResult?.bedarf_status || 'unbekannt';\nconst besteBereiche = plzResult?.beste_plz_bereiche;\nconst bedarfText = besteBereiche \n  ? 'Bereich ' + besteBereiche + ': ' + bedarfInfo \n  : bedarfInfo;\nconst nameInfo = item.name || 'Bewerber:in';\nconst unbekanntePlzHinweis = plzResult?.unbekannte_plz \n  ? ' Hinweis: PLZ-Bereich(e) ' + plzResult.unbekannte_plz + ' sind zusaetzlich angegeben, aber nicht in der Bedarfskarte erfasst.'\n  : '';\n// Routing und Begruendung\nlet finalRouting = 'manuell_pruefen';\nlet kiEmpfehlung = 'manuell_pruefen';\nlet kiKonfidenz = 50;\nlet kiBegruendung = '';\nif (alleVoll) {\n  finalRouting = 'absage_versendet';\n  kiEmpfehlung = 'absagen_region';\n  kiKonfidenz = 95;\n  kiBegruendung = 'PLZ ' + plzInfo + ' ist laut Bedarfskarte voll besetzt oder nicht gefragt. Kein Bedarf in dieser Region. Empfehle Absage mit Pool-Hinweis.';\n} else if (plzUnbekannt) {\n  finalRouting = 'manuell_pruefen';\n  kiEmpfehlung = 'manuell_pruefen';\n  kiKonfidenz = 30;\n  kiBegruendung = 'PLZ ' + plzInfo + ' ist nicht in der Bedarfskarte erfasst. Bitte pruefen ob wir dort OBs suchen und die Bedarfskarte ggf. ergaenzen. Dann Bewerbung neu bewerten.';\n} else if (verfuegbarkeit < 10) {\n  finalRouting = 'manuell_pruefen';\n  kiEmpfehlung = 'manuell_pruefen';\n  kiKonfidenz = 40;\n  kiBegruendung = nameInfo + ' ist nur ' + verfuegbarkeit + 'h/Woche verfuegbar. Unser Minimum sind 10h. Profil sonst: ' + berufsInfo + ', PLZ ' + plzInfo + ' (' + bedarfText + '). Ausnahme sinnvoll?';\n} else if (finalScore >= 70 && plzScore >= 70) {\n  finalRouting = 'einladung_versendet';\n  kiEmpfehlung = 'einladen';\n  kiKonfidenz = 85;\n  kiBegruendung = 'Guter Match: PLZ ' + plzInfo + ' (' + bedarfText + '), Score ' + finalScore + '/100. Beruf ' + berufsInfo + ' passt, ' + verfuegbarkeit + 'h/Woche verfuegbar. Einladung wurde automatisch versendet.';\n} else if (finalScore >= 40) {\n  finalRouting = 'manuell_pruefen';\n  kiEmpfehlung = 'manuell_pruefen';\n  kiKonfidenz = 60;\n  kiBegruendung = 'Score ' + finalScore + '/100 — knapp unter Einladungsschwelle (70). ' + bedarfText + '. Beruf: ' + berufsInfo + ', ' + verfuegbarkeit + 'h/Woche. Profil genauer pruefen — Tendenz: einladen wenn Beruf relevant.';\n} else {\n  finalRouting = 'manuell_pruefen';\n  kiEmpfehlung = 'absagen_profil';\n  kiKonfidenz = 70;\n  kiBegruendung = 'Score ' + finalScore + '/100 — deutlich unter Schwelle. Beruf: ' + berufsInfo + ', nur ' + verfuegbarkeit + 'h/Woche verfuegbar. Empfehle Absage, ausser es gibt besondere Gruende fuer eine Ausnahme.';\n}\n// Hinweis auf unbekannte Zonen nur fuer manuelle Pruefung (Telegram), nicht fuer Einladungs-Mail\nif (finalRouting === 'manuell_pruefen') {\n  kiBegruendung = kiBegruendung + unbekanntePlzHinweis;\n}\nreturn [{\n  json: {\n    ...item,\n    plz_score: plzScore,\n    plz_unbekannt: plzUnbekannt,\n    alle_voll: alleVoll,\n    verfuegbarkeits_score: verfuegbarkeitsScore,\n    vollstaendigkeits_score: vollstaendigkeitsScore,\n    iso_score: isoScore,\n    final_score: finalScore,\n    final_routing: finalRouting,\n    ki_empfehlung: kiEmpfehlung,\n    ki_konfidenz: kiKonfidenz,\n    ki_begruendung: kiBegruendung\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        192
+      ],
+      "id": "89d84255-9822-42e8-acfe-cc0f872c1fc5",
+      "name": "Scoring & Routing"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO pga7yket86jj0rl.bewerbungen \n(id, externe_id, name, email, telefon, wohnort, plz_wohnort, abgedeckte_plz,\nmax_fahrtweg_km, berufserfahrung_jahre, vorheriger_beruf, \nverfuegbarkeit_stunden_pro_woche, iso_zertifizierung, fuehrerschein, \nkurzmotivation, status_, score_, ki_empfehlung, ki_begruendung,\neingegangen_am, letzte_aktion, im_pool)\nVALUES (\n  {{ typeof $('Vollstaendigkeit pruefen').first().json.id === 'number' ? $('Vollstaendigkeit pruefen').first().json.id : 'DEFAULT' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.externe_id ? \"'\" + $('Vollstaendigkeit pruefen').first().json.externe_id + \"'\" : 'NULL' }},\n  '{{ $('Vollstaendigkeit pruefen').first().json.name }}',\n  '{{ $('Vollstaendigkeit pruefen').first().json.email }}',\n  {{ $('Vollstaendigkeit pruefen').first().json.telefon ? \"'\" + $('Vollstaendigkeit pruefen').first().json.telefon + \"'\" : 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.wohnort ? \"'\" + $('Vollstaendigkeit pruefen').first().json.wohnort + \"'\" : 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.plz_wohnort ? \"'\" + $('Vollstaendigkeit pruefen').first().json.plz_wohnort + \"'\" : 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.abgedeckte_plz?.length ? \"'\" + $('Vollstaendigkeit pruefen').first().json.abgedeckte_plz.join(',') + \"'\" : 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.max_fahrtweg_km ?? 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.berufserfahrung_jahre ?? 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.vorheriger_beruf ? \"'\" + $('Vollstaendigkeit pruefen').first().json.vorheriger_beruf + \"'\" : 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.verfuegbarkeit_stunden_pro_woche ?? 'NULL' }},\n  {{ $('Vollstaendigkeit pruefen').first().json.iso_zertifizierung ?? false }},\n  {{ $('Vollstaendigkeit pruefen').first().json.fuehrerschein ?? false }},\n  {{ $('Vollstaendigkeit pruefen').first().json.kurzmotivation ? \"'\" + $('Vollstaendigkeit pruefen').first().json.kurzmotivation.replace(/'/g, \"''\") + \"'\" : 'NULL' }},\n  'absage_versendet',\n  {{ $('Scoring & Routing').isExecuted ? $('Scoring & Routing').first().json.final_score : ($input.first().json.plz_score ?? 'NULL') }},\n  {{ $('Scoring & Routing').isExecuted ? \"'\" + $('Scoring & Routing').first().json.ki_empfehlung + \"'\" : \"'absagen_region'\" }},\n  {{ $('Scoring & Routing').isExecuted ? \"'\" + $('Scoring & Routing').first().json.ki_begruendung.replace(/'/g, \"''\") + \"'\" : \"'PLZ \" + ($('Vollstaendigkeit pruefen').first().json.plz_wohnort || 'unbekannt') + \" ist laut Bedarfskarte voll besetzt oder nicht gefragt. Kein Bedarf in dieser Region.'\" }},\n  CURRENT_TIMESTAMP,\n  CURRENT_TIMESTAMP,\n  true\n)\nON CONFLICT (id) DO UPDATE SET\n  status_ = 'absage_versendet',\n  score_ = EXCLUDED.score_,\n  ki_empfehlung = EXCLUDED.ki_empfehlung,\n  ki_begruendung = EXCLUDED.ki_begruendung,\n  im_pool = true,\n  letzte_aktion = CURRENT_TIMESTAMP\nRETURNING id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2992,
+        368
+      ],
+      "id": "e3b58158-2085-4c10-818e-19b3161ea0ee",
+      "name": "DB - Absage speichern",
+      "credentials": {
+        "postgres": {
+          "id": "THnjo4mtQfhqUFei",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Vollstaendigkeit pruefen').first().json.email_from || $('Vollstaendigkeit pruefen').first().json.email }}",
+        "subject": "=[REF:{{ $('DB - Absage speichern').first().json.id }}] Deine Bewerbung als Objektbesichtiger:in bei Certa",
+        "message": "=Hallo {{ $('Vollstaendigkeit pruefen').first().json.name }},<br><br>\nvielen Dank fuer Deine Bewerbung als Objektbesichtiger:in bei Certa. Wir haben uns Dein Profil angeschaut und finden es grundsaetzlich interessant.<br>\nAktuell ist die Region, fuer die Du Dich beworben hast, bei uns sehr gut abgedeckt. Wir haben dort genueg Kapazitaet und muessen daher leider erstmal absagen.<br><br>\nWenn Du einverstanden bist, behalten wir Deine Unterlagen in unserem Pool und melden uns, sobald sich in Deiner Region etwas aendert. Falls Du das nicht moechtest, antworte einfach kurz auf diese Mail und wir loeschen Deine Daten umgehend.<br>\nWir wuenschen Dir alles Gute und danken Dir nochmal fuer Dein Interesse an Certa.<br><br>\nBeste Gruesse<br>\n<strong>Certa GmbH</strong>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3200,
+        368
+      ],
+      "id": "04dc151d-879b-495b-90bb-558bb3a69618",
+      "name": "Mail - Absage senden",
+      "webhookId": "6a25ba97-3893-4f0e-868e-223f30b6465b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "da018LzcF4j1tjvr",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bewerbung",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        736,
+        176
+      ],
+      "id": "e3d83144-d18e-4787-beda-6516ddf5cbac",
+      "name": "Webhook",
+      "webhookId": "0d588409-6e94-489d-b2a2-43a1304d8a18"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst now = new Date().toISOString();\n\nlet item;\n\n// Tally Format\nconst tallyData = raw.body?.data || raw.data;\nif (tallyData && tallyData.fields) {\n  const fields = tallyData.fields;\n  \n  function getFieldByLabel(label) {\n    const field = fields.find(f => \n      f.label && f.label.toLowerCase().includes(label.toLowerCase())\n    );\n    if (!field) return null;\n    if (field.type === 'MULTIPLE_CHOICE' && field.options && field.value) {\n      const selectedId = Array.isArray(field.value) ? field.value[0] : field.value;\n      const option = field.options.find(o => o.id === selectedId);\n      return option ? option.text : null;\n    }\n    if (field.value === null || field.value === undefined) return null;\n    return field.value;\n  }\n\n  const plzRaw = getFieldByLabel('Abgedeckte PLZ') || '';\n  const abgedecktePlz = String(plzRaw)\n    .split(/[,\\s]+/)\n    .map(p => p.trim().substring(0, 2))\n    .filter(p => p.length === 2);\n\n  item = {\n    externe_id: null, // Tally liefert keine externe ID\n    name: getFieldByLabel('Name'),\n    email: getFieldByLabel('E-Mail'),\n    telefon: getFieldByLabel('Telefon'),\n    wohnort: getFieldByLabel('Wohnort'),\n    plz_wohnort: getFieldByLabel('PLZ Wohnort'),\n    abgedeckte_plz: abgedecktePlz,\n    max_fahrtweg_km: getFieldByLabel('Fahrtweg') !== null ? parseInt(getFieldByLabel('Fahrtweg')) : null,\n    berufserfahrung_jahre: getFieldByLabel('Berufserfahrung') !== null ? parseInt(getFieldByLabel('Berufserfahrung')) : null,\n    vorheriger_beruf: getFieldByLabel('Aktueller Beruf'),\n    verfuegbarkeit_stunden_pro_woche: getFieldByLabel('gbarkeit') !== null ? parseInt(getFieldByLabel('gbarkeit')) : null,\n    iso_zertifizierung: getFieldByLabel('ISO') === 'Ja',\n    fuehrerschein: getFieldByLabel('hrerschein') === 'Ja',\n    kurzmotivation: getFieldByLabel('Motivation')\n  };\n\n} else {\n  // Direktes JSON (curl, Subworkflow)\nconst body = raw.name ? raw : (raw.body || raw);\n  \n  // abgedeckte_plz normalisieren\n  let abgedecktePlz = body.abgedeckte_plz;\n  if (typeof abgedecktePlz === 'string') {\n    abgedecktePlz = abgedecktePlz.split(',').map(p => p.trim().substring(0, 2)).filter(p => p.length === 2);\n  } else if (Array.isArray(abgedecktePlz)) {\n    abgedecktePlz = abgedecktePlz.map(p => String(p).trim().substring(0, 2));\n  } else {\n    abgedecktePlz = [];\n  }\n\n  item = {\n    externe_id: body.externe_id || body.id || null,\n    name: body.name,\n    email: body.email,\n    telefon: body.telefon || null,\n    wohnort: body.wohnort || null,\n    plz_wohnort: body.plz_wohnort ? String(body.plz_wohnort) : null,\n    abgedeckte_plz: abgedecktePlz,\n    max_fahrtweg_km: body.max_fahrtweg_km ? parseInt(body.max_fahrtweg_km) : null,\n    berufserfahrung_jahre: body.berufserfahrung_jahre ? parseInt(body.berufserfahrung_jahre) : null,\n    vorheriger_beruf: body.vorheriger_beruf || null,\n    verfuegbarkeit_stunden_pro_woche: body.verfuegbarkeit_stunden_pro_woche ? parseInt(body.verfuegbarkeit_stunden_pro_woche) : null,\n    iso_zertifizierung: body.iso_zertifizierung === true || body.iso_zertifizierung === 'true',\n    fuehrerschein: body.fuehrerschein === true || body.fuehrerschein === 'true',\n    kurzmotivation: body.kurzmotivation || null\n  };\n}\n\nreturn [{\n  json: {\n    ...item,\n    email_from: item.email || '',\n    eingegangen_am: now,\n    letzte_aktion: now,\n    historie: JSON.stringify([{action: 'webhook_ingested', timestamp: now}])\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        176
+      ],
+      "id": "995778ad-b8dc-4656-9d16-8d1e83f60b74",
+      "name": "Webhook - Daten normalisieren"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "0YAWgPG6eVsbUVXs",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/0YAWgPG6eVsbUVXs",
+          "cachedResultName": "Sub-Workflow 1 - Rueckfrage"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        512,
+        -208
+      ],
+      "id": "ad8587b8-4d35-4b36-8123-cc12ada78e9c",
+      "name": "Rueckfrage Loop"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "018345bf-6b1c-405d-b08e-35533046f8ec",
+              "leftValue": "={{ ($json.subject || $json.Subject || '').toLowerCase() }}",
+              "rightValue": "[ref:",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        288,
+        -112
+      ],
+      "id": "d316bd86-89fa-484d-af82-8dd5a72e8bd9",
+      "name": "Rueckfrage-Antwort?"
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "output": "={{\n(() => {\n\nconst fehlendeFelder = $('Vollstaendigkeit pruefen').first().json.hat_fehlende_felder;\nconst plzScore = $input.first().json.plz_score;\nconst unbekanntePlz = $input.first().json.unbekannte_plz;\nconst abgedeckteVorhanden = $('Vollstaendigkeit pruefen').first().json.abgedeckte_plz?.length > 0;\n\n// 1. PLZ komplett unbekannt, weil gar keine abgedeckte_plz angegeben wurde\n//    -> Datenproblem beim Bewerber -> Rueckfrage (PLZ gehoert zu den nachzufragenden Punkten)\nif (plzScore === -1 && !abgedeckteVorhanden) {\n  return 0; // Rueckfrage\n}\n\n// 2. PLZ komplett unbekannt, obwohl abgedeckte_plz angegeben wurde\n//    -> keine davon ist in der Bedarfskarte -> internes Problem -> Grenzfall\nif (plzScore === -1) {\n  return 1; // Grenzfall/Telegram\n}\n\n// 3. PLZ schlecht (<=20) UND es gibt zusaetzlich unbekannte Zonen\n//    -> nicht automatisch absagen, da unbekannte Zone evtl. Bedarf hat -> manuelle Pruefung\nif (plzScore <= 20 && unbekanntePlz) {\n  return 1; // Grenzfall mit Hinweis auf unbekannte Zone\n}\n\n// 4. PLZ schlecht, alle Zonen bekannt -> direkte Absage (Prioritaet vor fehlenden Feldern)\nif (plzScore <= 20) {\n  return 3;\n}\n\n// 5. PLZ gut, aber Pflichtfelder fehlen -> Rueckfrage\nif (fehlendeFelder) {\n  return 0;\n}\n\n// 6. Alles gut -> Scoring\nreturn 2;\n\n})()\n}}\n\n\n"
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2080,
+        144
+      ],
+      "id": "9551b683-695f-4129-afee-237d6ffec8d9",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "content": "Eingangskanal für Freitext-Bewerbungen und Rückfrage Loop mit  [REF:ID]",
+        "height": 80,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        -208
+      ],
+      "id": "8f5fc8e6-8b4c-47c7-b161-9602518de382",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "Zweiter Eingangskanal für Formular (Tally.so) und direkte JSON-Tests/Subworkflow-Aufrufe.",
+        "height": 80,
+        "width": 288,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        592,
+        336
+      ],
+      "id": "27f5892e-2368-4284-a8e5-f5a883f68ca7",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "content": "Lässt nur E-Mails mit \"bewerbung\"/\"objektbesichtiger\"/\n\"ob stelle\" im Betreff durch.\n\nSchutz vor irrelevanten Mails, da kein dediziertes Postfach genutzt wird. Prozess endet in dem Fall hier.",
+        "height": 176,
+        "width": 320,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        32
+      ],
+      "id": "f9d72467-865f-40fd-a14d-1e4dbeb28583",
+      "name": "Sticky Note10"
+    },
+    {
+      "parameters": {
+        "content": "Hat die Email eine [REF:ID]?",
+        "height": 80,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        224,
+        -208
+      ],
+      "id": "97552ef5-c235-4f7d-a4e1-a670246443da",
+      "name": "Sticky Note14"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $('Vollstaendigkeit pruefen').first().json;\nconst input = $input.first().json;\nconst hatScoring = input.final_score !== undefined;\n\nconst finalScore = hatScoring ? input.final_score : null;\nconst kiEmpfehlung = hatScoring ? input.ki_empfehlung : 'manuell_pruefen';\n\nlet kiBegruendung;\nif (hatScoring) {\n  kiBegruendung = input.ki_begruendung;\n} else if (input.plz_score === -1) {\n  // Komplett unbekannt: keine der angegebenen PLZ ist in der Bedarfskarte\n  kiBegruendung = 'PLZ ' + (item.plz_wohnort || 'unbekannt') + ' mit Fokus auf Raum ' + (item.abgedeckte_plz?.join(', ') || 'unbekannt') + ' ist nicht in der Bedarfskarte erfasst. Bitte pruefen ob wir dort OBs suchen und Bedarfskarte ggf. ergaenzen.';\n} else {\n  // PLZ bekannt aber schlecht (<=20), zusaetzlich gibt es unbekannte Zonen\n  const besteBereiche = input.beste_plz_bereiche;\n  const unbekanntHinweis = input.unbekannte_plz \n    ? ' Zusaetzlich sind PLZ-Bereich(e) ' + input.unbekannte_plz + ' nicht in der Bedarfskarte erfasst.' \n    : '';\n  kiBegruendung = 'PLZ ' + (item.plz_wohnort || 'unbekannt') + ' (Bereich ' + (besteBereiche || '?') + ') ist laut Bedarfskarte ' + (input.bedarf_status || 'unbekannt') + '.' + unbekanntHinweis + ' Vor einer Absage bitte pruefen ob in den unbekannten Zonen Bedarf besteht.';\n}\n\nreturn [{\n  json: {\n    ...item,\n    final_score: finalScore,\n    ki_empfehlung: kiEmpfehlung,\n    ki_begruendung: kiBegruendung\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2784,
+        16
+      ],
+      "id": "1091d4d4-73c4-4a7c-a74a-8f776d79cd0c",
+      "name": "Grenzfall normalisieren"
+    },
+    {
+      "parameters": {
+        "content": "Holt den Klartext-Body aus dem Gmail-Trigger-Output für die spätere KI-Verarbeitung.",
+        "height": 80,
+        "width": 256,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        432,
+        128
+      ],
+      "id": "c6faf09d-9f18-4fd4-a69c-68fce3781208",
+      "name": "Sticky Note15"
+    },
+    {
+      "parameters": {
+        "content": "Sub-Prozess für Rückfragen",
+        "height": 80,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        448,
+        -304
+      ],
+      "id": "89de3c53-56fa-4d94-807e-5bd558a05f4b",
+      "name": "Sticky Note16"
+    },
+    {
+      "parameters": {
+        "content": "Baut den JSON-Body für den Claude-API-Call per Code-Node statt Expression-String, um Control-Character-Fehler beim JSON.stringify zu vermeiden.",
+        "height": 128,
+        "width": 288,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        656,
+        -160
+      ],
+      "id": "d05f83bc-10c2-41f8-a66d-4c82a80793d9",
+      "name": "Sticky Note17"
+    },
+    {
+      "parameters": {
+        "content": "LLM-Aufruf zum Interpretieren und Strukturieren von Freitext-E-Mails ins Bewerbungs-Schema.",
+        "height": 80,
+        "width": 272,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        960,
+        -112
+      ],
+      "id": "ef2b330c-cdd3-4a3a-8452-898a64d25600",
+      "name": "Sticky Note18"
+    },
+    {
+      "parameters": {
+        "content": "Single point of truth: erkennt automatisch Tally-Format, Direkt-JSON oder Subworkflow-Payload und bringt alle drei auf ein einheitliches Schema.",
+        "height": 128,
+        "width": 272,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        896,
+        336
+      ],
+      "id": "f9cdc9d9-3189-483d-b834-83d1362b5254",
+      "name": "Sticky Note11"
+    },
+    {
+      "parameters": {
+        "content": "Deterministische Punkte-Heuristik (PLZ ungültig, Verfügbarkeit/Erfahrung unrealistisch, Großbuchstaben, Werbe-Begriffe etc.). Punktesumme entscheidet über den nächsten Switch.",
+        "height": 240,
+        "width": 224,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        224
+      ],
+      "id": "4bae1945-d759-46e4-aed2-7190006c6aa7",
+      "name": "Sticky Note12"
+    },
+    {
+      "parameters": {
+        "content": "Deterministische Spam-Prüfung",
+        "height": 80,
+        "width": 166,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        -16
+      ],
+      "id": "1968810e-79e7-4290-904a-ac1b50b8afaa",
+      "name": "Sticky Note13"
+    },
+    {
+      "parameters": {
+        "content": "Speichert mit Status spam_aussortiert und der Spam-Begründung. Prozess endet hier.",
+        "height": 80,
+        "width": 278,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1536,
+        -112
+      ],
+      "id": "b6a43d76-82d7-4fd8-809a-8569488b58c7",
+      "name": "Sticky Note19"
+    },
+    {
+      "parameters": {
+        "content": "Prüft Pflichtfelder (Telefon, PLZ, Verfügbarkeit, Berufserfahrung). Ergebnis fließt in den nachfolgenden Switch (Rückfrage ja/nein).",
+        "height": 128,
+        "width": 230,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1552,
+        320
+      ],
+      "id": "cf3dea42-684a-4e92-9ece-bb04f6799ec2",
+      "name": "Sticky Note20"
+    },
+    {
+      "parameters": {
+        "content": "Findet den besten Bedarfsstatus über alle abgedeckten PLZ-Bereiche inkl. zugehörigem Bereich (beste_plz_bereiche) und liefert unbekannte PLZ-Bereiche separat.",
+        "height": 128,
+        "width": 294,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1776,
+        32
+      ],
+      "id": "2570d1d6-6b1c-402a-8f6b-3618b9176cde",
+      "name": "Sticky Note21"
+    },
+    {
+      "parameters": {
+        "content": "Vier Ausgänge:\n0: Pflichtfelder fehlen → Rückfrage\n1: PLZ unbekannt → Grenzfall\n3: PLZ bekannt & schlecht (≤20) → Absage\n2: sonst → Scoring\n\nPLZ-Status wird bewusst vor Vollständigkeit geprüft — keine unnötige Rückfrage vor einer ohnehin sicheren Absage.",
+        "height": 224,
+        "width": 358,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1952,
+        368
+      ],
+      "id": "6f9db5d8-512f-469a-bc4c-e81fd533518f",
+      "name": "Sticky Note22"
+    },
+    {
+      "parameters": {
+        "content": "Gewichteter Score (PLZ 50% / Verfügbarkeit 25% / Vollständigkeit 15% / ISO 10%).",
+        "height": 80,
+        "width": 262,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2240,
+        -16
+      ],
+      "id": "08502d4f-61d3-48ff-a62c-1cd9f442a26f",
+      "name": "Sticky Note23"
+    },
+    {
+      "parameters": {
+        "content": "Trennt finalen Routing-Pfad: Score ≥70 & PLZ-Score ≥70 → automatische Einladung. Alles andere → Grenzfall",
+        "height": 112,
+        "width": 262,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        416
+      ],
+      "id": "7b46702a-1c47-4613-bbe1-f42e18620a15",
+      "name": "Sticky Note24"
+    },
+    {
+      "parameters": {
+        "content": "Speichert den Datensatz vom jeweiligen Prozess in die Datenbank mit dem entsprechenden Status.",
+        "height": 112,
+        "width": 230,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        -288
+      ],
+      "id": "9ff1e998-c67a-4eaf-8ff4-831e7c4bfaf7",
+      "name": "Sticky Note25"
+    },
+    {
+      "parameters": {
+        "content": "Vereinheitlicht Begründungstexte für alle Grenzfall-Varianten",
+        "height": 80,
+        "width": 214,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2736,
+        -80
+      ],
+      "id": "ef5f1640-28fc-4190-904e-d9fa0905106f",
+      "name": "Sticky Note26"
+    },
+    {
+      "parameters": {
+        "content": "Automatischer Versand von Vorlage 3 mit Liste der fehlenden Felder. REF-ID im Subject für den Rückfrage-Loop.",
+        "height": 128,
+        "width": 278,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3392,
+        -176
+      ],
+      "id": "79f4036b-ea6a-473a-842d-9b6a646dae47",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Aktive Push-Benachrichtigung bei manuell_pruefen als Alternative zum Kanban für die Mitarbeiter:in. Inline-Buttons\n(✅ Einladen / ❌ Absagen) ermöglichen Sofort-Entscheidung über Sub-Workflow 1 - Manuelle-Entscheidung. Link zum Kanban-Dashboard statt langer Text-Erklärung.",
+        "height": 144,
+        "width": 502,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3392,
+        0
+      ],
+      "id": "af0097eb-53f1-4d64-9ef8-190eed60cf23",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "Automatischer Versand von Vorlage 2.",
+        "height": 80,
+        "width": 214,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3392,
+        384
+      ],
+      "id": "6d12856f-a715-4c2a-860d-d31d1f4a780b",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Automatischer Versand von Vorlage 1, inkl. Kalender-Buchungslink für die Terminvereinbarung.",
+        "height": 128,
+        "width": 278,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3392,
+        176
+      ],
+      "id": "20e8d697-c648-4027-9ca9-0241683bed53",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Betreff-Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spam Heuristik": {
+      "main": [
+        [
+          {
+            "node": "Spam?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude API - E-Mail parsen": {
+      "main": [
+        [
+          {
+            "node": "Spam Heuristik",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Betreff-Filter": {
+      "main": [
+        [
+          {
+            "node": "Rueckfrage-Antwort?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spam?": {
+      "main": [
+        [
+          {
+            "node": "Spam aussortieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Vollstaendigkeit pruefen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - PLZ Match": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Einladung speichern": {
+      "main": [
+        [
+          {
+            "node": "Mail - Einladung senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Grenzfall speichern": {
+      "main": [
+        []
+      ]
+    },
+    "Vollstaendigkeit pruefen": {
+      "main": [
+        [
+          {
+            "node": "DB - PLZ Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Rueckfrage speichern": {
+      "main": [
+        [
+          {
+            "node": "Mail - Rückfrage senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-Mail Text extrahieren": {
+      "main": [
+        [
+          {
+            "node": "Claude Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Body": {
+      "main": [
+        [
+          {
+            "node": "Claude API - E-Mail parsen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einladung oder Grenzfall?": {
+      "main": [
+        [
+          {
+            "node": "Grenzfall normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "DB - Einladung speichern",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "DB - Absage speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scoring & Routing": {
+      "main": [
+        [
+          {
+            "node": "Einladung oder Grenzfall?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Absage speichern": {
+      "main": [
+        [
+          {
+            "node": "Mail - Absage senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Webhook - Daten normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Daten normalisieren": {
+      "main": [
+        [
+          {
+            "node": "Spam Heuristik",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rueckfrage-Antwort?": {
+      "main": [
+        [
+          {
+            "node": "Rueckfrage Loop",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E-Mail Text extrahieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "DB - Rueckfrage speichern",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Grenzfall normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Scoring & Routing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "DB - Absage speichern",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        [],
+        []
+      ]
+    },
+    "Grenzfall normalisieren": {
+      "main": [
+        [
+          {
+            "node": "DB - Grenzfall speichern",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram - Benachrichtigung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedPerExecution": 8
+  },
+  "versionId": "749ca2fc-f4c6-4f64-b291-daa93f16f518",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b27e3452801c9eec963c1e30854af00b7617633d48fa019713e60a3c43a0cd5d"
+  },
+  "nodeGroups": [],
+  "id": "yWqXQXpNhjEaF8qn",
+  "tags": []
+}

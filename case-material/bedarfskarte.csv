@@ -1,0 +1,55 @@
+plz_bereich,region,bedarf_status,aktuelle_obs,gesucht_zusaetzlich,notizen
+01,Dresden,dringend gesucht,1,3,kein OB in Dresden-Süd
+02,Bautzen/Görlitz,Aufstockung sinnvoll,2,1,
+04,Leipzig,voll besetzt,5,0,
+06,Halle/Sachsen-Anhalt-Süd,dringend gesucht,0,2,kompletter Bereich offen!
+07,Gera/Jena,nicht gefragt,1,0,
+08,Zwickau/Plauen,Aufstockung sinnvoll,1,1,
+09,Chemnitz,Aufstockung sinnvoll,2,1,
+10,Berlin-Mitte,voll besetzt,8,0,Berlin generell überbesetzt - bitte keine neuen Berlin-Bewerbungen
+12,Berlin-Süd,voll besetzt,4,0,siehe 10
+13,Berlin-Nord,voll besetzt,3,0,
+14,Potsdam,Aufstockung sinnvoll,2,1,
+17,Mecklenburg-Vorpommern,dringend gesucht,1,2,riesiges Gebiet eigentlich 2-3 Personen nötig
+20,Hamburg-Mitte,Aufstockung sinnvoll,3,2,
+22,Hamburg-Nord/Schleswig,Aufstockung sinnvoll,2,1,
+24,Kiel/Lübeck,dringend gesucht,1,2,
+26,Ostfriesland,dringend gesucht,0,1,
+28,Bremen,Aufstockung sinnvoll,1,1,
+30,Hannover,voll besetzt,4,0,
+33,Bielefeld/OWL,Aufstockung sinnvoll,2,2,wachsende Region
+34,Kassel/Nordhessen,dringend gesucht,1,2,
+35,Marburg/Gießen,,1,,Status unklar - bitte prüfen
+37,Göttingen,Aufstockung sinnvoll,1,1,
+38,Braunschweig,nicht gefragt,2,0,
+40,Düsseldorf,voll besetzt,5,0,
+42,Wuppertal/Solingen,Aufstockung sinnvoll,2,1,
+44,Dortmund,Aufstockung sinnvoll,3,1,
+45,Essen/Ruhrgebiet,voll besetzt,6,0,Ruhrgebiet sehr gut abgedeckt
+46,Oberhausen/Niederrhein,Aufstockung sinnvoll,2,1,
+48,Münster,dringend gesucht,1,2,
+49,Osnabrück/Emsland,Aufstockung sinnvoll,1,1,
+50,Köln,voll besetzt,7,0,
+51,Köln-Umland/Leverkusen,Aufstockung sinnvoll,3,1,
+52,Aachen,Aufstockung sinnvoll,1,1,
+53,Bonn/Rhein-Sieg,Aufstockung sinnvoll,2,1,
+55,Mainz/Rheinhessen,Aufstockung sinnvoll,2,1,
+57,Siegen/Westerwald,dringend gesucht,0,2,kompletter Bereich offen
+58,Hagen/Märkischer Kreis,Aufstockung sinnvoll,1,1,
+59,Soest/Hochsauerland,voll besetzt,3,0,Heimatregion - sehr gut abgedeckt
+60,Frankfurt am Main,voll besetzt,6,0,
+63,Offenbach/Hanau,Aufstockung sinnvoll,2,1,
+65,Wiesbaden/Taunus,Aufstockung sinnvoll,2,1,
+67,Kaiserslautern/Pfalz,dringend gesucht,1,2,
+68,Mannheim/Heidelberg,Aufstockung sinnvoll,3,1,
+70,Stuttgart,voll besetzt,5,0,
+72,Tübingen/Reutlingen,Aufstockung sinnvoll,1,1,
+76,Karlsruhe,Aufstockung sinnvoll,2,1,
+78,Schwarzwald-Baar,dringend gesucht,0,2,sehr ländlich schwer zu besetzen
+79,Freiburg/Hochrhein,Aufstockung sinnvoll,1,2,
+80,München-Mitte,voll besetzt,6,0,
+85,München-Umland,Aufstockung sinnvoll,4,1,
+90,Nürnberg/Fürth,Aufstockung sinnvoll,3,1,
+93,Regensburg/Oberpfalz,dringend gesucht,1,2,
+97,Würzburg/Unterfranken,Aufstockung sinnvoll,1,1,
+99,Erfurt/Thüringen,Aufstockung sinnvoll,2,1,
